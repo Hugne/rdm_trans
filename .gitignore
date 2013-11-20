@@ -1,0 +1,13 @@
+.deps
+src/.deps
+Makefile
+autom4te.cache
+config.h
+config.guess
+config.log
+config.status
+*.o
+*~
+stamp-h1
+src/txserver
+src/txclient

@@ -1,0 +1,2 @@
+SUBDIRS = src
+dist_doc_DATA = AUTHORS ChangeLog NEWS README COPYING

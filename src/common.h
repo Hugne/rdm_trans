@@ -5,6 +5,8 @@
 
 #define TX_BUFSIZE (2<<24) /* 16MB transaction buffer */
 
+#define WINSIZE 20
+
 struct header {
 	uint32_t length;	/*Length of complete transaction*/
 	uint32_t tid;		/*Transaction ID*/

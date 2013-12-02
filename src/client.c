@@ -34,6 +34,7 @@ int transaction_send(int sd, struct sockaddr_tipc *sa_remote,
 	int delay_us = 0;
 	int i;
 	int nrejected = 0;
+	int last_acked = 0;
 
 	msghdr_create(&msg, iov, 2, NULL, 0, sa_remote);
 	iov[0].iov_base = &hdr;
@@ -57,7 +58,10 @@ again:
 			free(buf);
 			return EXIT_FAILURE;
 		}
-		reject = transaction_acknowledge(sd, MSG_DONTWAIT);
+		if (last_acked+WINSIZE <= sid)	/*Block, w4ack*/
+			reject = transaction_acknowledge(sd, &last_acked, 0);
+		else
+			reject = transaction_acknowledge(sd, &last_acked, MSG_DONTWAIT);
 		if (reject > 0 && reject <= sid) {
 			i=1;
 			//CLIENT_LOG("server rejected message %d while sending %d\n", reject, sid);
@@ -94,7 +98,7 @@ again:
 	}
 	CLIENT_LOG("All sent, check for acks\n");
 	/*All data sent, now check for ack or reject */
-	if ((sid = transaction_acknowledge(sd, 0))) {
+	if ((sid = transaction_acknowledge(sd, &last_acked, 0))) {
 		nrejected++;
 		//CLIENT_LOG("server rejected message %d\n", sid);
 		/*Speculatively reassign nbytes*/
@@ -116,7 +120,7 @@ again:
  * or in the case that we got a nak/reject the segment ID of the
  * first rejected message
  */
-int transaction_acknowledge(int sd, int flags)
+int transaction_acknowledge(int sd, int *last_acked, int flags)
 {
 		struct sockaddr_tipc sa_remote; 
 		struct msghdr msg;
@@ -156,6 +160,8 @@ int transaction_acknowledge(int sd, int flags)
 			return 0;
 		} else {
 			/*We got an ack*/
+			CLIENT_LOG("Server acked message %d\n", ack.sid);
+			*last_acked = ack.sid;
 			return 0;
 		}
 		return -1;

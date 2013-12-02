@@ -16,6 +16,7 @@ struct transaction {
 	int len;
 	int tid;
 	int expected_sid;
+	int last_acked;
 	char *buf;
 	char *bufp;
 	LIST_ENTRY(transaction) next;
@@ -44,6 +45,7 @@ struct transaction* create_transaction(struct tipc_portid *pid, int len, int tid
 	tx->bufp = tx->buf;
 	tx->expected_sid = 1;
 	tx->tid = tid;
+	tx->last_acked = 0;
 	LIST_INSERT_HEAD(&transaction_list, tx, next);
 	//printf("transaction created\n");
 	return tx;
@@ -68,6 +70,21 @@ void delete_transaction(struct transaction *tx) {
 }
 */
 
+void send_ack(int sd, struct sockaddr_tipc *sa, struct transaction *tx)
+{
+	struct msghdr msg;
+	struct iovec iov[1];
+	struct header ack = {.tid = tx->tid,
+			     .length = 0,
+			     .sid = (tx->expected_sid - 1)};
+
+	msghdr_create(&msg, iov, 1, NULL, 0, sa);
+	iov[0].iov_base = &ack;
+	iov[0].iov_len = sizeof(ack);
+	if (sendmsg(sd, &msg, 0) <= 0)
+		perror("sendto(): failed to send ack\n");
+}
+
 /*Returns true if transaction is complete, otherwise false*/
 int transaction_process(int sd, struct transaction *tx, struct msghdr *msg,
 			 size_t length)
@@ -87,7 +104,7 @@ int transaction_process(int sd, struct transaction *tx, struct msghdr *msg,
 	 * messages might have been rejected and we get a
 	 * sid gap*/
 	if (tx->expected_sid != hdr->sid) {
-	/*	
+	/*
 		printf("SID mismatch for transaction %d dropping packet\n",
 			tx->tid);
 		printf("Expected %d but received %d \n",
@@ -101,6 +118,10 @@ int transaction_process(int sd, struct transaction *tx, struct msghdr *msg,
 	memcpy(tx->bufp, data, length);
 	tx->bufp += length;
 	tx->expected_sid++;
+	if (tx->last_acked+(WINSIZE/2) < hdr->sid){
+		send_ack(sd, sa, tx);
+		tx->last_acked = hdr->sid;
+	}
 	usleep(20);
 	/*Check if we have received all expected data for the transaction*/
 	if (tx->bufp == (tx->buf + tx->len)) {
